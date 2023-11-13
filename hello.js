@@ -7,7 +7,7 @@ const session = require('express-session');
 let conn = mysql.createConnection({
     host: 'localhost',
     user: 'root',
-    password: 'h4ck3rm4n',
+    password: 'root',
     database: 'mydb'
 });
 conn.connect(function(err){
