@@ -3,11 +3,13 @@ const app = express();
 const mysql = require('mysql2');
 const path = require('path');
 const session = require('express-session');
+const bcrypt = require("bcrypt");
+const saltRounds = 10;
 
 let conn = mysql.createConnection({
     host: 'localhost',
     user: 'root',
-    password: 'root',
+    password: 'h4ck3rm4n',
     database: 'mydb'
 });
 conn.connect(function(err){
@@ -39,37 +41,55 @@ app.post('/auth', function(request, response) {
     // Capture the input fields
     let username = request.body.username;
     let password = request.body.password;
+    bcrypt
+        .hash(password, saltRounds)
+        .then(hash => {
+            console.log('Hash ' + username + ":", hash)
+        })
+        .catch(err => console.error(err.message))
 
     // Ensure the input fields exist and are not empty
     if (username && password) {
         // Execute SQL query that'll select the account from the database based on the specified username and password
-        let sql = "SELECT * FROM mydb.userauth WHERE usuario = ? AND contrasenia = ?";
-        let params = [username, password];
+        let sql = "SELECT passwd FROM mydb.user WHERE username = ?";
+        let params = [username];
 
         conn.query(sql, params, function(err, results) {
             // If there is an issue with the query, output the error
             if (err) {
                 throw err;
             }
-
             // If the account exists
             if (results.length > 0) {
-                // Authenticate the user
-                sql = 'UPDATE mydb.userauth SET session = 1 WHERE usuario = ?';
-                params = [username];
-
-                conn.query(sql, params, function (err, results){
-                    if (err) {
-                        throw err;
-                    }
-
-                    // Set session variables
-                    request.session.loggedin = true;
-                    request.session.username = username;
-
-                    // Redirect to the home page
-                    response.redirect('/home');
-                });
+                const hashFromDatabase = results[0].passwd;
+                console.log('OG hash: ', hashFromDatabase);
+                validateUser(hashFromDatabase, password)
+                    .then(result => {
+                        console.log('Validation result:', result);
+                        if(result){
+                            // Authenticate the user
+                            const currentDate = new Date().toISOString().slice(0, 19).replace('T', ' ');
+                            console.log('Time stamp ' + username + ': ' + currentDate);
+                            sql = 'UPDATE mydb.user SET session = 1, time_stamp = ? WHERE username = ?';
+                            params = [currentDate, username];
+                            conn.query(sql, params, function (err, results){
+                                if (err) {
+                                    throw err;
+                                }
+                                // Set session variables
+                                request.session.loggedin = true;
+                                request.session.username = username;
+                                // Redirect to the home page
+                                response.redirect('/home');
+                            });
+                        }else{
+                            response.send('Incorrect Username and/or Password!');
+                            response.end();
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                    });
             } else {
                 response.send('Incorrect Username and/or Password!');
                 response.end();
@@ -97,7 +117,7 @@ app.get('/home', function(request, response) {
 // http://localhost:3000/logout
 app.get('/logout', function (req, res) {
     // Destroy the session
-    let sql = "UPDATE mydb.userauth SET session = 0 WHERE usuario = ?";
+    let sql = "UPDATE mydb.user SET session = 0, time_stamp = NULL WHERE username = ?";
     let params = [req.session.username];
 
     conn.query(sql, params, function(err, results) {
@@ -116,3 +136,18 @@ app.get('/logout', function (req, res) {
         });
     });
 });
+
+//Function to compare bcrypt hashes
+function validateUser(hash, password) {
+    return bcrypt
+        .compare(password, hash)
+        .then(res => {
+            console.log(res); // return true
+            return res; // returning the result
+        })
+        .catch(err => {
+            console.error(err.message);
+            return err;
+
+        })
+}
