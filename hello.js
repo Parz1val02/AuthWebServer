@@ -79,6 +79,10 @@ app.post('/auth', function(request, response) {
                                 // Set session variables
                                 request.session.loggedin = true;
                                 request.session.username = username;
+
+                                //Insert authorization flow entries
+
+
                                 // Redirect to the home page
                                 response.redirect('/home');
                             });
